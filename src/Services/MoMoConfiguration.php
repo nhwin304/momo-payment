@@ -66,20 +66,24 @@ final class MoMoConfiguration
         return $values;
     }
 
-    public function endpoint(string $operation): string
+    public function endpoint(string $operation, ?string $mode = null): string
     {
         if (! in_array($operation, ['create', 'query'], true)) {
             throw new MoMoPaymentException('Thao tác MoMo không hợp lệ.');
         }
 
-        $url = config("momo-payment.endpoints.{$this->mode()}.{$operation}");
+        $mode ??= $this->mode();
+        if (! in_array($mode, ['sandbox', 'production'], true)) {
+            throw new MoMoPaymentException('Chế độ MoMo không hợp lệ.');
+        }
+        $url = config("momo-payment.endpoints.{$mode}.{$operation}");
         if (! is_string($url) || ! str_starts_with($url, 'https://')) {
             throw new MoMoPaymentException('Endpoint MoMo phải sử dụng HTTPS.');
         }
 
         // Chống gửi nhầm khóa Sandbox sang Production hoặc tới endpoint giả mạo.
         $host = parse_url($url, PHP_URL_HOST);
-        $expectedHost = $this->mode() === 'sandbox' ? 'test-payment.momo.vn' : 'payment.momo.vn';
+        $expectedHost = $mode === 'sandbox' ? 'test-payment.momo.vn' : 'payment.momo.vn';
         if (
             $host !== $expectedHost ||
             parse_url($url, PHP_URL_PATH) !== "/v2/gateway/api/{$operation}" ||
