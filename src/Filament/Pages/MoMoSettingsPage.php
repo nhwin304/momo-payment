@@ -12,6 +12,8 @@ use Filament\Schemas\Schema;
 use Filament\Forms\Components\Toggle;
 use Nhwin\MoMoPayment\Settings\MoMoSettingsDefinition;
 use Nhwin\Settings\Abstracts\AbstractPageSettings;
+use Nhwin\Settings\Facades\Setting;
+use Throwable;
 
 /**
  * Trang Filament 5 lưu trong nhóm momo của nhwin/settings.
@@ -43,6 +45,61 @@ final class MoMoSettingsPage extends AbstractPageSettings
     public function getDefaultData(): array
     {
         return (new MoMoSettingsDefinition)->defaults();
+    }
+
+    /**
+     * MoMo là cổng thanh toán của ứng dụng, không phụ thuộc scope tenant hiện tại.
+     * Override thao tác đọc/ghi của AbstractPageSettings để luôn dùng global.
+     */
+    public function mount(): void
+    {
+        $this->callHook('beforeFill');
+        $data = array_replace_recursive(
+            $this->getDefaultData(),
+            Setting::forScope('global')->getGroup($this->settingName()),
+        );
+
+        $this->data = $this->sanitizeEncryptedFormData($this->mutateFormDataBeforeFill($data));
+        $this->adapter()->fill($this->settingsForm(), $this->data);
+        $this->callHook('afterFill');
+        $this->rememberData();
+    }
+
+    public function save(): void
+    {
+        $form = $this->settingsForm();
+
+        try {
+            $this->beginDatabaseTransaction();
+            $this->callHook('beforeValidate');
+
+            $data = $this->adapter()->state($form);
+            $this->callHook('afterValidate');
+            $data = $this->mutateFormDataBeforeSave($data);
+            $this->callHook('beforeSave');
+
+            Setting::forScope('global')->setMany($this->settingName(), $data);
+            $this->adapter()->saveRelationships($form);
+            $this->callHook('afterSave');
+        } catch (Throwable $exception) {
+            $this->rollBackDatabaseTransaction();
+            throw $exception;
+        }
+
+        $this->commitDatabaseTransaction();
+        try {
+            $this->callHook('afterCommit');
+        } finally {
+            $this->data = $this->sanitizeEncryptedFormData($data);
+            $this->adapter()->fill($form, $this->data);
+            $this->rememberData();
+        }
+        $this->getSavedNotification()?->send();
+    }
+
+    public function lastUpdatedAt(string $format = 'H:i:s d/m/Y', ?string $timezone = null): ?string
+    {
+        return Setting::forScope('global')->getGroupLastUpdatedAt($this->settingName(), $format, $timezone);
     }
 
     public function form(Schema $schema): Schema
