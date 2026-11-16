@@ -34,11 +34,26 @@ final class MoMoConfiguration
     /** @return array{partnerCode: string, accessKey: string, secretKey: string} */
     public function credentials(): array
     {
-        if (! $this->enabled()) {
+        return $this->credentialsFor();
+    }
+
+    /**
+     * Truy xuất credential đúng môi trường đã lưu cùng đơn hàng.
+     * Cho phép xác minh IPN khi cổng đã tắt, nhưng không cho phép tạo giao dịch mới.
+     *
+     * @return array{partnerCode: string, accessKey: string, secretKey: string}
+     */
+    public function credentialsFor(?string $mode = null, bool $requireEnabled = true): array
+    {
+        if ($requireEnabled && ! $this->enabled()) {
             throw new MoMoPaymentException('MoMo đang tắt trong phần cấu hình.');
         }
 
-        $mode = $this->mode();
+        $mode ??= $this->mode();
+        if (! in_array($mode, ['sandbox', 'production'], true)) {
+            throw new MoMoPaymentException('Chế độ MoMo không hợp lệ.');
+        }
+
         $values = [];
         foreach (['partner_code' => 'partnerCode', 'access_key' => 'accessKey', 'secret_key' => 'secretKey'] as $key => $alias) {
             $value = $this->settings->forScope('global')->get("momo.{$mode}.{$key}", '');
