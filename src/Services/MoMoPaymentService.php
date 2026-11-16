@@ -76,7 +76,8 @@ final class MoMoPaymentService
     {
         $this->assertIdentifier($orderId, 'orderId');
         $this->assertIdentifier($requestId, 'requestId');
-        $keys = $this->configuration->credentials();
+        $mode = $this->configuration->mode();
+        $keys = $this->configuration->credentialsFor($mode);
 
         $payload = [
             'partnerCode' => $keys['partnerCode'],
