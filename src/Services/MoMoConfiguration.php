@@ -77,10 +77,19 @@ final class MoMoConfiguration
             throw new MoMoPaymentException('Endpoint MoMo phải sử dụng HTTPS.');
         }
 
-        // Chống SSRF do cấu hình endpoint bị thay đổi trái phép.
+        // Chống gửi nhầm khóa Sandbox sang Production hoặc tới endpoint giả mạo.
         $host = parse_url($url, PHP_URL_HOST);
-        if (! in_array($host, ['test-payment.momo.vn', 'payment.momo.vn'], true)) {
-            throw new MoMoPaymentException('Endpoint MoMo không nằm trong danh sách cho phép.');
+        $expectedHost = $this->mode() === 'sandbox' ? 'test-payment.momo.vn' : 'payment.momo.vn';
+        if (
+            $host !== $expectedHost ||
+            parse_url($url, PHP_URL_PATH) !== "/v2/gateway/api/{$operation}" ||
+            parse_url($url, PHP_URL_PORT) !== null ||
+            parse_url($url, PHP_URL_USER) !== null ||
+            parse_url($url, PHP_URL_PASS) !== null ||
+            parse_url($url, PHP_URL_QUERY) !== null ||
+            parse_url($url, PHP_URL_FRAGMENT) !== null
+        ) {
+            throw new MoMoPaymentException('Endpoint MoMo không đúng môi trường hoặc đường dẫn chính thức.');
         }
 
         return $url;
