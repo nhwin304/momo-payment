@@ -49,7 +49,8 @@ final class MoMoPaymentService
 
         $this->assertHttpsUrl($redirectUrl, 'redirectUrl');
         $this->assertHttpsUrl($ipnUrl, 'ipnUrl');
-        $keys = $this->configuration->credentials();
+        $mode = $this->configuration->mode();
+        $keys = $this->configuration->credentialsFor($mode);
 
         $payload = [
             'partnerCode' => $keys['partnerCode'],
@@ -67,7 +68,7 @@ final class MoMoPaymentService
         ];
         $payload['signature'] = MoMoSigner::signCreate($payload, $keys['accessKey'], $keys['secretKey']);
 
-        return $this->post('create', $payload);
+        return $this->post('create', $payload, $mode);
     }
 
     /** Truy vấn trạng thái thực tế khi cần đối chiếu, không suy đoán từ redirect. */
@@ -85,7 +86,7 @@ final class MoMoPaymentService
         ];
         $payload['signature'] = MoMoSigner::signQuery($payload, $keys['accessKey'], $keys['secretKey']);
 
-        return $this->post('query', $payload);
+        return $this->post('query', $payload, $mode);
     }
 
     /**
@@ -131,7 +132,7 @@ final class MoMoPaymentService
             && in_array($notification['resultCode'] ?? null, [0, '0'], true);
     }
 
-    private function post(string $operation, array $payload): array
+    private function post(string $operation, array $payload, string $mode): array
     {
         // Không tự retry POST; requestId giúp đối tác chủ động xử lý yêu cầu trùng.
         try {
@@ -139,7 +140,7 @@ final class MoMoPaymentService
                 ->acceptJson()
                 ->connectTimeout((int) config('momo-payment.connect_timeout', 10))
                 ->timeout((int) config('momo-payment.timeout', 35))
-                ->post($this->configuration->endpoint($operation), $payload);
+                ->post($this->configuration->endpoint($operation, $mode), $payload);
         } catch (ConnectionException) {
             // Không để lọt URL/query hoặc bí mật vào thông báo lỗi cho người dùng.
             throw new MoMoPaymentException('Không kết nối được với MoMo, cần đối chiếu trạng thái trước khi thử lại.');
