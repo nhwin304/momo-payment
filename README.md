@@ -111,7 +111,7 @@ momo.production.access_key # encrypted
 momo.production.secret_key # encrypted
 \`\`\`
 
-MoMo config của package được đọc ở \`scope=global\` để request thanh toán và IPN đều dùng chung cấu hình. Nếu ứng dụng thay \`settings.scope_resolver\` cho multi-tenancy, bảo đảm trang quản trị lưu vào \`global\` hoặc tùy chỉnh lại trang cho đúng scope.
+MoMo config của package được đọc ở \`scope=global\` để request thanh toán và IPN đều dùng chung cấu hình. Trang quản trị mặc định **luôn đọc và ghi vào scope global**, kể cả khi ứng dụng cấu hình \`settings.scope_resolver\` theo tenant.
 
 ## 4. Sử dụng service tại dự án Ozzdem
 
@@ -122,10 +122,10 @@ use Nhwin\MoMoPayment\Services\MoMoPaymentService;
 use Nhwin\MoMoPayment\Services\MoMoConfiguration;
 use Illuminate\Support\Str;
 
-public function checkout(MoMoPaymentService $momo, MoMoConfiguration $config)
+public function checkout(int $orderIdInput, MoMoPaymentService $momo, MoMoConfiguration $config)
 {
-    // Ví dụ: thay $order bằng đơn hàng Ozzdem đã validate và lưu DB.
-    $order = /* đơn hàng đang chờ thanh toán */;
+    // Ví dụ giả định Ozzdem dùng App\\Models\\Order; tùy chỉnh theo model thực tế.
+    $order = \App\Models\Order::findOrFail($orderIdInput);
     $orderId = 'O'.$order->id;
     $requestId = (string) Str::uuid();
     $amount = (int) $order->total_vnd; // Số nguyên VND
