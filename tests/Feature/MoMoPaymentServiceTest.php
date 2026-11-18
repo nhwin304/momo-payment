@@ -68,6 +68,43 @@ final class MoMoPaymentServiceTest extends TestCase
         );
     }
 
+    public function test_query_can_reconcile_old_sandbox_order_after_gateway_is_disabled(): void
+    {
+        // Cấu hình hiện tại đã chuyển qua Production, nhưng đơn gốc ở Sandbox.
+        $this->mockSettings(['momo.enabled' => false, 'momo.mode' => 'production']);
+        Http::fake(['test-payment.momo.vn/*' => Http::response([
+            'partnerCode' => 'P001', 'orderId' => 'O1', 'requestId' => 'Q1',
+            'amount' => 10000, 'resultCode' => 0,
+        ])]);
+
+        $service = app(MoMoPaymentService::class);
+        $result = $service->check('O1', 'Q1', 'sandbox');
+
+        self::assertTrue($service->isSuccessfulQuery($result, 'O1', 'Q1', 10000, 'sandbox'));
+        Http::assertSent(fn (Request $request): bool =>
+            $request->url() === 'https://test-payment.momo.vn/v2/gateway/api/query'
+            && $request['partnerCode'] === 'P001'
+        );
+    }
+
+    public function test_query_rejects_mismatched_or_malformed_result(): void
+    {
+        $this->mockSettings();
+        $service = app(MoMoPaymentService::class);
+        $result = [
+            'partnerCode' => 'P001', 'orderId' => 'O1',
+            'requestId' => 'Q1', 'amount' => 10000, 'resultCode' => 0,
+        ];
+
+        self::assertTrue($service->isSuccessfulQuery($result, 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'partnerCode' => 'X'], 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'orderId' => ['O1']], 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'requestId' => 'Q2'], 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'amount' => '1e4'], 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'amount' => 9999], 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'resultCode' => 9000], 'O1', 'Q1', 10000));
+    }
+
     public function test_disabled_gateway_rejects_payment_without_http_call(): void
     {
         $this->mockSettings(['momo.enabled' => false]);
