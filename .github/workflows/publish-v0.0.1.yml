@@ -1,0 +1,76 @@
+name: Xuất bản MoMo Payment v0.0.1
+
+# Chạy một lần khi thêm workflow lên main; cũng cho phép chạy lại thủ công.
+# Không tự phát hành lại khi các file khác thay đổi.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v0.0.1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: momo-payment-release-v0.0.1
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Kiểm thử trước phát hành
+    runs-on: ubuntu-latest
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Cài đặt PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, sqlite3
+          tools: composer:v2
+          coverage: none
+
+      - name: Kiểm tra composer.json
+        run: composer validate --strict
+
+      - name: Cài dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Kiểm tra cú pháp PHP
+        run: find src tests config -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Chạy PHPUnit
+        run: composer test
+
+  release:
+    name: Tạo tag và xuất bản GitHub Release
+    needs: verify
+    if: github.repository == 'nhwin304/momo-payment' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Lấy mã nguồn đúng commit đã kiểm thử
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Phát hành v0.0.1 nếu chưa tồn tại
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Chạy lại workflow không tạo release trùng hoặc sửa release đã công bố.
+          if gh release view v0.0.1 >/dev/null 2>&1; then
+            echo 'Release v0.0.1 đã tồn tại, bỏ qua.'
+            exit 0
+          fi
+
+          # GitHub tự tạo tag v0.0.1 từ commit đã kiểm thử khi tag chưa có.
+          gh release create v0.0.1 \
+            --target "$GITHUB_SHA" \
+            --title 'MoMo Payment v0.0.1' \
+            --notes-file .github/release-notes/v0.0.1.md
