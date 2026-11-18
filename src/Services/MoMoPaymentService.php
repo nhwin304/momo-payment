@@ -134,7 +134,8 @@ final class MoMoPaymentService
         ?string $mode = null,
     ): bool {
         return $this->verifyIpn($notification, $expectedOrderId, $expectedRequestId, $expectedAmount, $mode)
-            && in_array($notification['resultCode'] ?? null, [0, '0'], true);
+            && in_array($notification['resultCode'] ?? null, [0, '0'], true)
+            && $this->hasTransactionId($notification['transId'] ?? null);
     }
 
     /**
@@ -163,7 +164,8 @@ final class MoMoPaymentService
             && is_string($result['requestId'] ?? null)
             && hash_equals($expectedQueryRequestId, $result['requestId'])
             && $this->amountMatches($result['amount'] ?? null, $expectedAmount)
-            && in_array($result['resultCode'] ?? null, [0, '0'], true);
+            && in_array($result['resultCode'] ?? null, [0, '0'], true)
+            && $this->hasTransactionId($result['transId'] ?? null);
     }
 
     /** Loại bỏ chuỗi số mũ, số thực, tiền âm và dữ liệu dạng mảng từ callback. */
@@ -171,6 +173,16 @@ final class MoMoPaymentService
     {
         return (is_int($received) && $received === $expected)
             || (is_string($received) && ctype_digit($received) && $received === (string) $expected);
+    }
+
+    /**
+     * Giao dịch thành công phải có mã transId dương để ứng dụng lưu unique.
+     * Không ép chuỗi dài thành int vì có thể làm tràn số trên PHP.
+     */
+    private function hasTransactionId(mixed $transId): bool
+    {
+        return (is_int($transId) && $transId > 0)
+            || (is_string($transId) && preg_match('/^[1-9][0-9]{0,18}$/D', $transId) === 1);
     }
 
     private function post(string $operation, array $payload, string $mode): array
@@ -201,8 +213,13 @@ final class MoMoPaymentService
 
     private function assertIdentifier(string $value, string $name): void
     {
-        if (! preg_match('/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,49}$/D', $value)) {
-            throw new InvalidArgumentException("{$name} phải dài 1-50 ký tự an toàn.");
+        // MoMo quy định orderId bắt đầu/kết thúc bằng chữ hoặc số, dấu nằm giữa.
+        $pattern = $name === 'orderId'
+            ? '/^[a-zA-Z0-9](?:[-_.]*[a-zA-Z0-9]+)*$/D'
+            : '/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,49}$/D';
+
+        if (strlen($value) > 50 || preg_match($pattern, $value) !== 1) {
+            throw new InvalidArgumentException("{$name} phải dài 1-50 ký tự và đúng định dạng MoMo.");
         }
     }
 
