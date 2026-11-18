@@ -62,6 +62,19 @@ final class MoMoIpnVerificationTest extends TestCase
         self::assertFalse($service->isSuccessfulIpn([...$ipn, 'transId' => 999], 'O123', 'R123', 10000, 'sandbox'));
     }
 
+    public function test_invalid_ipn_field_types_fail_without_implicit_string_cast(): void
+    {
+        $service = app(MoMoPaymentService::class);
+        $ipn = $this->signedIpn();
+
+        self::assertFalse($service->verifyIpn([...$ipn, 'orderId' => ['O123']], 'O123', 'R123', 10000, 'sandbox'));
+        self::assertFalse($service->verifyIpn([...$ipn, 'requestId' => ['R123']], 'O123', 'R123', 10000, 'sandbox'));
+        self::assertFalse($service->verifyIpn([...$ipn, 'amount' => '1e4'], 'O123', 'R123', 10000, 'sandbox'));
+        self::assertFalse($service->verifyIpn([...$ipn, 'amount' => '010000'], 'O123', 'R123', 10000, 'sandbox'));
+        self::assertFalse($service->verifyIpn([...$ipn, 'amount' => 10000.0], 'O123', 'R123', 10000, 'sandbox'));
+        self::assertFalse($service->verifyIpn([...$ipn, 'partnerCode' => ['PSB']], 'O123', 'R123', 10000, 'sandbox'));
+    }
+
     public function test_authentic_failed_ipn_must_not_be_marked_as_paid(): void
     {
         $ipn = $this->signedIpn(1006);
