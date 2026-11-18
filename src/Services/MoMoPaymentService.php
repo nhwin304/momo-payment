@@ -71,13 +71,16 @@ final class MoMoPaymentService
         return $this->post('create', $payload, $mode);
     }
 
-    /** Truy vấn trạng thái thực tế khi cần đối chiếu, không suy đoán từ redirect. */
-    public function check(string $orderId, string $requestId): array
+    /**
+     * Đối soát theo môi trường của giao dịch gốc, kể cả sau khi cổng bị tắt.
+     * requestId là mã MỚI cho lần query; orderId là mã đã lưu khi tạo thanh toán.
+     */
+    public function check(string $orderId, string $requestId, ?string $mode = null): array
     {
         $this->assertIdentifier($orderId, 'orderId');
         $this->assertIdentifier($requestId, 'requestId');
-        $mode = $this->configuration->mode();
-        $keys = $this->configuration->credentialsFor($mode);
+        $mode ??= $this->configuration->mode();
+        $keys = $this->configuration->credentialsFor($mode, requireEnabled: false);
 
         $payload = [
             'partnerCode' => $keys['partnerCode'],
@@ -110,10 +113,11 @@ final class MoMoPaymentService
         if (
             ! is_string($notification['partnerCode'] ?? null) ||
             ! hash_equals($keys['partnerCode'], $notification['partnerCode']) ||
-            (string) ($notification['orderId'] ?? '') !== $expectedOrderId ||
-            (string) ($notification['requestId'] ?? '') !== $expectedRequestId ||
-            ! is_numeric($notification['amount'] ?? null) ||
-            (string) $notification['amount'] !== (string) $expectedAmount
+            ! is_string($notification['orderId'] ?? null) ||
+            ! hash_equals($expectedOrderId, $notification['orderId']) ||
+            ! is_string($notification['requestId'] ?? null) ||
+            ! hash_equals($expectedRequestId, $notification['requestId']) ||
+            ! $this->amountMatches($notification['amount'] ?? null, $expectedAmount)
         ) {
             return false;
         }
@@ -131,6 +135,42 @@ final class MoMoPaymentService
     ): bool {
         return $this->verifyIpn($notification, $expectedOrderId, $expectedRequestId, $expectedAmount, $mode)
             && in_array($notification['resultCode'] ?? null, [0, '0'], true);
+    }
+
+    /**
+     * API query không thay thế việc đối chiếu đơn tại DB.
+     * Chỉ cho phép ứng dụng xác nhận đã thanh toán khi toàn bộ định danh,
+     * số tiền và trạng thái trả về khớp bản ghi giao dịch gốc.
+     * Phản hồi query được tin cậy qua HTTPS tới hostname MoMo đã khóa.
+     */
+    public function isSuccessfulQuery(
+        array $result,
+        string $expectedOrderId,
+        string $expectedQueryRequestId,
+        int $expectedAmount,
+        ?string $mode = null,
+    ): bool {
+        if ($expectedAmount <= 0 || $expectedOrderId === '' || $expectedQueryRequestId === '') {
+            return false;
+        }
+
+        $keys = $this->configuration->credentialsFor($mode, requireEnabled: false);
+
+        return is_string($result['partnerCode'] ?? null)
+            && hash_equals($keys['partnerCode'], $result['partnerCode'])
+            && is_string($result['orderId'] ?? null)
+            && hash_equals($expectedOrderId, $result['orderId'])
+            && is_string($result['requestId'] ?? null)
+            && hash_equals($expectedQueryRequestId, $result['requestId'])
+            && $this->amountMatches($result['amount'] ?? null, $expectedAmount)
+            && in_array($result['resultCode'] ?? null, [0, '0'], true);
+    }
+
+    /** Loại bỏ chuỗi số mũ, số thực, tiền âm và dữ liệu dạng mảng từ callback. */
+    private function amountMatches(mixed $received, int $expected): bool
+    {
+        return (is_int($received) && $received === $expected)
+            || (is_string($received) && ctype_digit($received) && $received === (string) $expected);
     }
 
     private function post(string $operation, array $payload, string $mode): array
