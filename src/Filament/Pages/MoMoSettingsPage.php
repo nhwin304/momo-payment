@@ -11,6 +11,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Forms\Components\Toggle;
 use Nhwin\MoMoPayment\Settings\MoMoSettingsDefinition;
+use Nhwin\MoMoPayment\Settings\MoMoSettingsValidator;
 use Nhwin\Settings\Abstracts\AbstractPageSettings;
 use Nhwin\Settings\Facades\Setting;
 use Throwable;
@@ -67,6 +68,9 @@ final class MoMoSettingsPage extends AbstractPageSettings
 
     public function save(): void
     {
+        // Kiểm tra quyền lại khi thực thi Livewire action, không chỉ khi mở trang.
+        abort_unless(static::canAccessSettingsPage(), 403);
+
         $form = $this->settingsForm();
 
         try {
@@ -97,6 +101,18 @@ final class MoMoSettingsPage extends AbstractPageSettings
         $this->getSavedNotification()?->send();
     }
 
+    /**
+     * Không cho bật gateway khi cấu hình môi trường đang chọn chưa đủ thông tin.
+     * Chỉ đọc khóa cũ tại server, tuyệt đối không gửi lại khóa lên Livewire.
+     */
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return app(MoMoSettingsValidator::class)->validate(
+            $data,
+            Setting::forScope('global')->getGroup($this->settingName()),
+        );
+    }
+
     public function lastUpdatedAt(string $format = 'H:i:s d/m/Y', ?string $timezone = null): ?string
     {
         return Setting::forScope('global')->getGroupLastUpdatedAt($this->settingName(), $format, $timezone);
@@ -122,9 +138,11 @@ final class MoMoSettingsPage extends AbstractPageSettings
                         TextInput::make('sandbox.partner_code')->label('Partner Code')->maxLength(100),
                         TextInput::make('sandbox.access_key')
                             ->label('Access Key')->password()->revealable()
+                            ->helperText('Để trống nếu muốn giữ khóa đã lưu.')
                             ->dehydrated(fn (?string $state): bool => filled($state)),
                         TextInput::make('sandbox.secret_key')
                             ->label('Secret Key')->password()->revealable()
+                            ->helperText('Để trống nếu muốn giữ khóa đã lưu.')
                             ->dehydrated(fn (?string $state): bool => filled($state)),
                         TextInput::make('sandbox.endpoint_create')->label('API Endpoint')
                             ->default(config('momo-payment.endpoints.sandbox.create'))
