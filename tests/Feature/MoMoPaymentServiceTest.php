@@ -74,7 +74,7 @@ final class MoMoPaymentServiceTest extends TestCase
         $this->mockSettings(['momo.enabled' => false, 'momo.mode' => 'production']);
         Http::fake(['test-payment.momo.vn/*' => Http::response([
             'partnerCode' => 'P001', 'orderId' => 'O1', 'requestId' => 'Q1',
-            'amount' => 10000, 'resultCode' => 0,
+            'amount' => 10000, 'resultCode' => 0, 'transId' => 11223344,
         ])]);
 
         $service = app(MoMoPaymentService::class);
@@ -94,6 +94,7 @@ final class MoMoPaymentServiceTest extends TestCase
         $result = [
             'partnerCode' => 'P001', 'orderId' => 'O1',
             'requestId' => 'Q1', 'amount' => 10000, 'resultCode' => 0,
+            'transId' => 11223344,
         ];
 
         self::assertTrue($service->isSuccessfulQuery($result, 'O1', 'Q1', 10000));
@@ -103,6 +104,28 @@ final class MoMoPaymentServiceTest extends TestCase
         self::assertFalse($service->isSuccessfulQuery([...$result, 'amount' => '1e4'], 'O1', 'Q1', 10000));
         self::assertFalse($service->isSuccessfulQuery([...$result, 'amount' => 9999], 'O1', 'Q1', 10000));
         self::assertFalse($service->isSuccessfulQuery([...$result, 'resultCode' => 9000], 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'transId' => 0], 'O1', 'Q1', 10000));
+        self::assertFalse($service->isSuccessfulQuery([...$result, 'transId' => []], 'O1', 'Q1', 10000));
+    }
+
+    public function test_create_rejects_order_ids_outside_momo_format(): void
+    {
+        $this->mockSettings();
+        Http::fake();
+
+        foreach (['O:123', 'O123-', 'O..', str_repeat('A', 51)] as $orderId) {
+            try {
+                app(MoMoPaymentService::class)->create(
+                    $orderId, 'R1', 10000, 'captureWallet', 'Don hang 1',
+                    'https://example.com/return', 'https://example.com/ipn',
+                );
+                self::fail("Đã chấp nhận orderId không hợp lệ: {$orderId}");
+            } catch (InvalidArgumentException) {
+                // Đúng: từ chối trước khi gọi API.
+            }
+        }
+
+        Http::assertNothingSent();
     }
 
     public function test_disabled_gateway_rejects_payment_without_http_call(): void
