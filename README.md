@@ -180,7 +180,7 @@ if ($momo->isSuccessfulQuery(
 }
 ```
 
-`check()` đối soát được cả giao dịch cũ sau khi tắt cổng hoặc đổi môi trường; việc tạo giao dịch mới vẫn bị chặn khi cổng tắt. Dữ liệu query chỉ được tin cậy khi lấy từ kết nối HTTPS tới host MoMo chính thức; **không đưa phản hồi từ trình duyệt vào `isSuccessfulQuery()`**.
+`check()` đối soát được cả giao dịch cũ sau khi tắt cổng hoặc đổi môi trường; việc tạo giao dịch mới vẫn bị chặn khi cổng tắt. Mã `orderId` cần đúng định dạng chữ/số và dấu `-`, `_`, `.` nằm giữa các cụm chữ/số theo quy định của MoMo. Dữ liệu query chỉ được tin cậy khi lấy từ kết nối HTTPS tới host MoMo chính thức; **không đưa phản hồi từ trình duyệt vào `isSuccessfulQuery()`**.
 
 ## 5. Xử lý IPN bảo mật và idempotent
 
@@ -240,7 +240,7 @@ Nếu cần xử lý IPN tới khi đơn được tạo xong, hãy dùng queue, 
 | `MoMoPaymentService::check($orderId, $requestId, $mode)` | Truy vấn theo môi trường gốc, kể cả sau khi gateway bị tắt |
 | `MoMoPaymentService::verifyIpn($ipn, $orderId, $requestId, $amount, $mode)` | Kiểm tra dữ liệu thông báo và chữ ký |
 | `MoMoPaymentService::isSuccessfulIpn(...)` | Xác thực IPN và resultCode=0 |
-| `MoMoPaymentService::isSuccessfulQuery(...)` | Kiểm tra partner, mã đơn, mã query, số tiền và trạng thái của phản hồi đối soát |
+| `MoMoPaymentService::isSuccessfulQuery(...)` | Kiểm tra partner, mã đơn, mã query, số tiền, `resultCode=0` và `transId` dương |
 | `MoMoConfiguration::enabled()` | Kiểm tra đã bật MoMo |
 | `MoMoConfiguration::mode()` | Trả `sandbox` / `production` |
 
@@ -255,7 +255,7 @@ find src tests config -name '*.php' -print0 | xargs -0 -n1 php -l
 composer test
 ```
 
-Workflow GitHub Actions nằm tại `.github/workflows/tests.yml` dùng PHP 8.3, kiểm tra cú pháp và chạy PHPUnit. Test tích hợp kiểm tra `nhwin/settings`: mã hóa, scope global, giữ khóa khi để trống và chặn kích hoạt nếu thiếu credentials. Phải xác minh status workflow **pass** trước khi triển khai production. Test API thật với sandbox credentials **không được commit lên git**.
+Workflow GitHub Actions nằm tại `.github/workflows/tests.yml` dùng PHP 8.3, `actions/checkout@v6` (Node 24, quyền chỉ đọc), kiểm tra cú pháp và chạy PHPUnit. Test tích hợp kiểm tra `nhwin/settings`: mã hóa, scope global, giữ khóa khi để trống và chặn kích hoạt nếu thiếu credentials. Phải xác minh status workflow **pass** trước khi triển khai production. Test API thật với sandbox credentials **không được commit lên git**.
 
 ## 8. Bảo mật & giới hạn
 
